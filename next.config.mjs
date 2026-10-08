@@ -1,7 +1,6 @@
-import type { NextConfig } from "next";
-
 // Apenas recursos padrão do Next.js (next build + next start). Nada exclusivo da Vercel.
-const config: NextConfig = {
+/** @type {import('next').NextConfig} */
+const config = {
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {

@@ -1,6 +1,6 @@
 import "server-only";
 
-export type Config = { token: string; listId: string; campo: string; senha: string };
+export type Config = { token: string; listId: string; campo: string; campoPagamento: string; senha: string };
 
 const OBRIGATORIAS = ["CLICKUP_TOKEN", "CLICKUP_LIST_ID", "APP_PASSWORD"] as const;
 
@@ -22,6 +22,7 @@ export function lerConfig(): { ok: true; cfg: Config } | { ok: false; faltando: 
       token: process.env.CLICKUP_TOKEN!.trim(),
       listId: extrairListId(process.env.CLICKUP_LIST_ID!),
       campo: process.env.CLICKUP_CAMPO_VERBA?.trim() || "Verba Atual 2.0",
+      campoPagamento: process.env.CLICKUP_CAMPO_PAGAMENTO?.trim() || "Tipo de pagamento",
       senha: process.env.APP_PASSWORD!,
     },
   };

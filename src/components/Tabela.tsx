@@ -4,7 +4,28 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { salvarVerba } from "@/app/actions";
 import { arredondar, lerValor, moeda, valorPermitido } from "@/lib/formato";
+import ColarCriativivo from "@/components/ColarCriativivo";
 import type { Cliente } from "@/lib/tipos";
+
+type FiltroPag = "todos" | "pix" | "boleto" | "cartao";
+const FILTROS: { id: FiltroPag; rotulo: string }[] = [
+  { id: "todos", rotulo: "Todos" },
+  { id: "pix", rotulo: "PIX" },
+  { id: "boleto", rotulo: "Boleto" },
+  { id: "cartao", rotulo: "Cartão" },
+];
+
+const COR_PAGAMENTO: Record<string, string> = {
+  pix: "bg-sky-100 text-sky-900",
+  boleto: "bg-pink-100 text-pink-900",
+  cartao: "bg-purple-100 text-purple-900",
+};
+
+function SeloPagamento({ nome }: { nome: string | null }) {
+  if (!nome) return <span className="text-texto-suave">—</span>;
+  const cor = COR_PAGAMENTO[semAcento(nome)] ?? "bg-primaria-suave text-texto";
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${cor}`}>{nome}</span>;
+}
 
 type Estado = { fase: "enviando" | "ok" | "erro"; msg: string };
 
@@ -16,6 +37,7 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
   const [valores, setValores] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Record<string, Estado>>({});
   const [busca, setBusca] = useState("");
+  const [filtroPag, setFiltroPag] = useState<FiltroPag>("todos");
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [resumo, setResumo] = useState<string | null>(null);
@@ -36,7 +58,9 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
   const alterados = linhas.filter((l) => l.alterado);
   const invalidos = linhas.filter((l) => l.invalido);
   const filtro = semAcento(busca.trim());
-  const visiveis = filtro ? linhas.filter((l) => semAcento(l.c.nome).includes(filtro)) : linhas;
+  const visiveis = linhas.filter(
+    (l) => (!filtro || semAcento(l.c.nome).includes(filtro)) && (filtroPag === "todos" || semAcento(l.c.pagamento ?? "") === filtroPag),
+  );
 
   // Enter pula para a próxima caixa de verba (Tab já segue a ordem da tela).
   function aoTeclar(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -82,10 +106,25 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-sec" type="button" disabled={enviando} onClick={() => router.refresh()}>Recarregar do ClickUp</button>
+          <ColarCriativivo clientes={clientes} disabled={enviando} onAplicar={(v) => setValores((x) => ({ ...x, ...v }))} />
           <button className="btn" type="button" disabled={enviando || alterados.length === 0 || invalidos.length > 0} onClick={() => setConfirmando(true)}>
             {enviando ? "Salvando…" : `Salvar tudo${alterados.length ? ` (${alterados.length})` : ""}`}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtrar por forma de pagamento">
+        {FILTROS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            aria-pressed={filtroPag === f.id}
+            onClick={() => setFiltroPag(f.id)}
+            className={filtroPag === f.id ? "btn" : "btn-sec"}
+          >
+            {f.rotulo}
+          </button>
+        ))}
       </div>
 
       {invalidos.length > 0 && (
@@ -96,12 +135,13 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
       {resumo && <p className={resumo.includes("erro") ? "alerta-aviso" : "alerta-ok"}>{resumo}</p>}
 
       <div className="card overflow-x-auto p-0">
-        <table ref={tabela} className="w-full min-w-[820px] text-left text-sm">
-          <thead className="border-b border-slate-200 text-slate-500">
+        <table ref={tabela} className="w-full min-w-[820px] text-left max-[700px]:min-w-0 text-sm">
+          <thead className="border-b border-borda bg-primaria text-fundo">
             <tr>
               <th className="px-4 py-3">Cliente</th>
-              <th>Plataforma</th>
-              <th className="text-right">Valor mensal</th>
+              <th className="px-2">Pagamento</th>
+              <th className="max-[700px]:hidden">Plataforma</th>
+              <th className="text-right max-[700px]:hidden">Valor mensal</th>
               <th className="text-right">{campo}</th>
               <th className="w-44 px-3">Nova verba</th>
               <th className="px-3">Situação</th>
@@ -111,10 +151,11 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
             {visiveis.map(({ c, invalido, alterado }) => {
               const st = status[c.taskId];
               return (
-                <tr key={c.taskId} className={`border-b border-slate-100 last:border-0 ${alterado ? "bg-indigo-50/60" : ""}`}>
+                <tr key={c.taskId} className={`border-b border-borda last:border-0 ${alterado ? "bg-primaria-suave" : ""}`}>
                   <td className="px-4 py-2 font-medium">{c.nome}</td>
-                  <td>{c.plataforma ?? "—"}</td>
-                  <td className="text-right">{c.valorMensal !== null ? moeda(c.valorMensal) : "—"}</td>
+                  <td className="px-2"><SeloPagamento nome={c.pagamento} /></td>
+                  <td className="max-[700px]:hidden">{c.plataforma ?? "—"}</td>
+                  <td className="text-right max-[700px]:hidden">{c.valorMensal !== null ? moeda(c.valorMensal) : "—"}</td>
                   <td className="text-right">{c.verbaAtual !== null ? moeda(c.verbaAtual) : "—"}</td>
                   <td className="px-3 py-1.5">
                     <input
@@ -133,29 +174,29 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
                   </td>
                   <td className="px-3 text-xs">
                     {st ? (
-                      <span className={st.fase === "ok" ? "text-green-700" : st.fase === "erro" ? "text-red-700" : "text-slate-500"}>
+                      <span className={st.fase === "ok" ? "text-green-700" : st.fase === "erro" ? "text-red-700" : "text-texto-suave"}>
                         {st.fase === "ok" ? "✓ " : st.fase === "erro" ? "✗ " : ""}
                         {st.msg}
                       </span>
                     ) : alterado ? (
-                      <span className="text-indigo-700">Alterado</span>
+                      <span className="text-primaria">Alterado</span>
                     ) : null}
                   </td>
                 </tr>
               );
             })}
             {visiveis.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">{clientes.length ? "Nenhum cliente encontrado." : "Nenhuma tarefa na lista."}</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-texto-suave">{clientes.length ? "Nenhum cliente encontrado." : "Nenhuma tarefa na lista."}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       {confirmando && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-conf">
+        <div className="fixed inset-0 z-10 flex items-center justify-center bg-overlay p-4" role="dialog" aria-modal="true" aria-labelledby="titulo-conf">
           <div className="card max-h-[85vh] w-full max-w-lg space-y-4 overflow-y-auto">
             <h2 id="titulo-conf" className="text-lg font-semibold">Confirmar {alterados.length} alteração(ões)</h2>
-            <ul className="divide-y divide-slate-100 text-sm">
+            <ul className="divide-y divide-borda text-sm">
               {alterados.map((l) => (
                 <li key={l.c.taskId} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <span className="font-medium">{l.c.nome}</span>
@@ -165,7 +206,7 @@ export default function Tabela({ clientesIniciais, campo }: { clientesIniciais: 
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-slate-500">Cada valor será gravado no campo "{campo}" do ClickUp, com um comentário na tarefa.</p>
+            <p className="text-xs text-texto-suave">Cada valor será gravado no campo "{campo}" do ClickUp, com um comentário na tarefa.</p>
             <div className="flex justify-end gap-2">
               <button className="btn-sec" onClick={() => setConfirmando(false)}>Cancelar</button>
               <button className="btn" onClick={confirmar} autoFocus>Confirmar e gravar</button>

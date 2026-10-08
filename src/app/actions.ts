@@ -30,7 +30,7 @@ export async function entrar(formData: FormData) {
   }
   tentativas.delete(ip);
   await criarSessao(conf.cfg.senha);
-  redirect("/");
+  redirect("/?inicio=1");
 }
 
 export async function sair() {

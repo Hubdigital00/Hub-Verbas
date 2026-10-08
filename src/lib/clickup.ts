@@ -93,6 +93,39 @@ export async function campoVerbaId(cfg: Config): Promise<string> {
   return campo.id;
 }
 
+/** Campo de forma de pagamento (somente leitura): id e opções, descobertos pelo nome em GET /list/{id}/field. */
+async function campoPagamento(cfg: Config): Promise<{ id: string; opcoes: Opcao[] } | null> {
+  const chave = `${cfg.listId}:${normalizar(cfg.campoPagamento)}`;
+  const hit = cachePagamento.get(chave);
+  if (hit && hit.ate > Date.now()) return hit.campo;
+  let campo: { id: string; opcoes: Opcao[] } | null = null;
+  try {
+    const { fields } = await chamar<{ fields: { id: string; name: string; type: string; type_config?: { options?: Opcao[] } }[] }>(
+      cfg,
+      `/list/${encodeURIComponent(cfg.listId)}/field`,
+    );
+    const f = fields.find((x) => normalizar(x.name) === normalizar(cfg.campoPagamento));
+    if (f) campo = { id: f.id, opcoes: f.type_config?.options ?? [] };
+  } catch {
+    // Pagamento é informação extra: se falhar, a tabela segue sem a coluna preenchida.
+  }
+  cachePagamento.set(chave, { campo, ate: Date.now() + 10 * 60_000 });
+  return campo;
+}
+
+const cachePagamento = new Map<string, { campo: { id: string; opcoes: Opcao[] } | null; ate: number }>();
+
+/** Nome da opção do drop_down: a API devolve o orderindex (ou o id) da opção escolhida. */
+function pagamentoDaTarefa(t: Tarefa, campo: { id: string; opcoes: Opcao[] } | null): string | null {
+  if (!campo) return null;
+  const c = t.custom_fields?.find((x) => x.id === campo.id);
+  const v = c?.value;
+  if (v === undefined || v === null || v === "") return null;
+  const opcoes = campo.opcoes.length ? campo.opcoes : (c?.type_config?.options ?? []);
+  const o = opcoes.find((x) => x.id === v || (typeof v !== "object" && x.orderindex === Number(v)));
+  return o?.name?.trim() || null;
+}
+
 /* -------------------------------- leitura -------------------------------- */
 
 const numero = (v: unknown): number | null => {
@@ -132,6 +165,7 @@ export const valorDoCampo = (t: Tarefa, fieldId: string) => numero(t.custom_fiel
 /** GET /list/{id}/task com paginação (100 por página). */
 export async function listarClientes(cfg: Config): Promise<Cliente[]> {
   const fieldId = await campoVerbaId(cfg);
+  const pagto = await campoPagamento(cfg);
   const clientes: Cliente[] = [];
   for (let pagina = 0; pagina < 50; pagina++) {
     const r = await chamar<{ tasks: Tarefa[]; last_page?: boolean }>(
@@ -143,6 +177,7 @@ export async function listarClientes(cfg: Config): Promise<Cliente[]> {
         taskId: t.id,
         nome: nomeDoCliente(t.name),
         plataforma: texto(porNome(t, "Plataforma")),
+        pagamento: pagamentoDaTarefa(t, pagto),
         valorMensal: numero(porNome(t, "Valor Mensal")?.value),
         verbaAtual: valorDoCampo(t, fieldId),
       });
